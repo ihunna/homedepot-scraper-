@@ -76,10 +76,25 @@ class HomeDepot():
             retailer = "HomeDepot"
             storesku = data['identifiers'].get('storeSkuNumber',None)
             omsid = data['identifiers'].get('parentId',None)
+            store_name = store['store_name']
+            store_id = store['store_id']
+            store_location = f"{store['address']}, {store['city']}, {store['state']} {store['zipcode']}"
+
+
+            inventory = data['fulfillment']['fulfillmentOptions']
+            total = 0
+
+
+            if inventory is not None:
+                a_q = [loc['locations'] for i in inventory for loc in i['services']  if loc['type'] == 'bopis']
+
+                if len(a_q) < 1:
+                    a_q = [loc['locations'] for i in inventory for loc in i['services']  if loc['type'] == 'express delivery']
+                
+                total = sum([loc['inventory']['quantity'] for i in a_q for loc in i if loc['locationId'] == store['store_id']])
 
             image_url = data['media'].get('images',None)
             mainImageurl = str(image_url[0].get('url')).replace('<SIZE>','400') if image_url is not None else image_url
-
             
             result = {
                 "name":name,
@@ -93,6 +108,10 @@ class HomeDepot():
                 "retailer":retailer,
                 "storesku":sku,
                 "omsid":omsid,
+                "store_name":store_name,
+                "store_id":store_id,
+                "store_location":store_location,
+                "inventory":total
             }
             
             # print(f"from store {store['store_id']} | item {sku}")
@@ -209,7 +228,10 @@ class HomeDepot():
                     verify=verify
                 )
                 
-                if response.ok:success,result = True,response.json()
+                if response.ok:
+                    if response.json().get('errors'):
+                        raise Exception(response.json().get('errors',[{}])[0].get('message','Unknown error'))
+                    success,result = True,response.json()
             
                 elif response.status_code in [503,412,456,522,408,403]:
                     print('Whole store search' + ' at ' + store['store_name'] + ' failed to get details, retrying...')
@@ -343,7 +365,7 @@ class HomeDepot():
 
                 if success:
                     data = result_data['data']
-                    print(f'Successfully scanned store {store_id}, total items: {len(data)}, scanned so far: {scanned + len(data)}')
+                    print(f'Successfully scanned store {store_id}, total items: {len(data)}, scanned so far: {scanned + len(data)} at offset {offset}')
                     
 
                     with open(csv_file, 'a', encoding='utf-8', newline='') as f:
@@ -357,7 +379,8 @@ class HomeDepot():
                     print(f'Failed to scan store {store_id}: {message}')
 
                 # Update offset for the next iteration of the outer loop
-                offset += 1
+                if offset * limit >= 720:offset = 0
+                else:offset += 1
 
             return True, f'Completed scanning store {store_id}, total items scanned: {scanned}'
         except Exception as error:
@@ -375,8 +398,7 @@ if __name__ == '__main__':
     homedepot = HomeDepot()
 
     stores = homedepot.load_stores()
-
-    headers = ['name', 'brand', 'url', 'mainImageurl', 'SKU', 'Reviews', 'Rating', 'Model', 'retailer', 'storesku', 'omsid']
+    headers = ['name', 'brand', 'url', 'mainImageurl', 'SKU', 'Reviews', 'Rating', 'Model', 'retailer', 'storesku', 'omsid','storeName','storeID','storeLocation','inventory']
     csv_file = f'product-{datetime.now().strftime("%Y-%m-%d")}.csv'
     results_folder = os.path.join(homedepot.root_dir, 'results')
 
