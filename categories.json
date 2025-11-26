@@ -1,0 +1,109 @@
+{
+    "categories":[
+        {
+            "name": "Appliances",
+            "categoryId": "N-5yc1vZbv1w",
+            "link":"/b/Appliances/N-5yc1vZbv1w"
+        },
+        {
+            "name": "Bath & Faucets",
+            "categoryId": "N-5yc1vZbzb3",
+            "link":"/b/Bath/N-5yc1vZbzb3"
+        },
+        {
+            "name": "Blinds & Window Treatments",
+            "categoryId": "N-5yc1vZar4w",
+            "link":"/b/Window-Treatments/N-5yc1vZar4w"
+        },
+        {
+            "name": "Building Materials",
+            "categoryId": "N-5yc1vZaqns",
+            "link":"/b/Building-Materials/N-5yc1vZaqns"
+        },
+        {
+            "name": "Cleaning",
+            "categoryId": "N-5yc1vZbqsi",
+            "link":"/b/Cleaning/N-5yc1vZbqsi"
+        },
+        {
+            "name": "Decor & Funiture",
+            "categoryId": "N-5yc1vZas6p",
+            "link":"/b/Home-Decor/N-5yc1vZas6p"
+        },
+        {
+            "name": "Doors & Windows",
+            "categoryId": "N-5yc1vZaqih",
+            "link":"/b/Doors-Windows/N-5yc1vZaqih"
+        },
+        {
+            "name": "Electrical",
+            "categoryId": "N-5yc1vZarcd",
+            "link":"/b/Electrical/N-5yc1vZarcd"
+        },
+        {
+            "name": "Flooring, Tile, & Rugs",
+            "categoryId": "N-5yc1vZaq7r",
+            "link":"/b/Flooring/N-5yc1vZaq7r"
+        },
+        {
+            "name": "Hardware",
+            "categoryId": "N-5yc1vZc21m",
+            "link":"/b/Hardware/N-5yc1vZc21m"
+        },
+        {
+            "name": "Heating, Cooling, & Air Quality",
+            "categoryId": "N-5yc1vZc4k8",
+            "link":"/b/Heating-Venting-Cooling/N-5yc1vZc4k8"
+        },
+        {
+            "name": "Holiday Decorations",
+            "categoryId": "N-5yc1vZbd6e",
+            "link":"/b/Holiday-Decorations/N-5yc1vZbd6e"
+        },
+        {
+            "name": "Kitchen & Kitchenware",
+            "categoryId": "N-5yc1vZar4i",
+            "link":"/b/Kitchen/N-5yc1vZar4i"
+        },
+        {
+            "name": "Lawn & Garden",
+            "categoryId": "N-5yc1vZbx6k",
+            "link":"/b/Outdoors-Garden-Center/N-5yc1vZbx6k"
+        },
+        {
+            "name": "Lighting & Ceiling Fans",
+            "categoryId": "N-5yc1vZbvn5",
+            "link":"/b/Lighting/N-5yc1vZbvn5"
+        },
+        {
+            "name": "Outdoor Living & Patio",
+            "categoryId": "N-5yc1vZbx82",
+            "link":"/b/Outdoors/N-5yc1vZbx82"
+        },
+        {
+            "name": "Paint",
+            "categoryId": "N-5yc1vZar2d",
+            "link":"/b/Paint/N-5yc1vZar2d"
+        },
+        {
+            "name": "Plumbing",
+            "categoryId": "N-5yc1vZbqew",
+            "link":"/b/Plumbing/N-5yc1vZbqew"
+        },
+        {
+            "name": "Smart Home",
+            "categoryId": "N-5yc1vZc1jw",
+            "link":"/b/Smart-Home/N-5yc1vZc1jw"
+        },
+        {
+            "name": "Storage & Organization",
+            "categoryId": "N-5yc1vZas7e",
+            "link":"/b/Storage-Organization/N-5yc1vZas7e"
+        },
+        {
+            "name": "Tools",
+            "categoryId": "N-5yc1vZc1xy",
+            "link":"/b/Tools/N-5yc1vZc1xy"
+        }
+    ]
+}
