@@ -340,7 +340,7 @@ class HomeDepot():
         try:
             all_data_rows = []
             scanned = 0
-            stores = self.load_stores()[:100]  # Limit to first 100 stores for testing
+            stores = self.load_stores()
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
                 print(f'Scanning wholestore for: {product["SKU"]}\n')
