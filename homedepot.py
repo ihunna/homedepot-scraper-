@@ -58,13 +58,8 @@ class HomeDepot():
             return ''.join(random.choices(string.ascii_letters + string.digits, k=16))
     
         
-    def format_data(self,store,sku,delay,timeout,data={},multiple=False):
+    def format_data(self,store,sku,data):
         try:
-            if not multiple and len(data.keys()) == 0:
-                success,data = self.get_product_details(store,delay,timeout,sku=sku)
-                if not success: return False, data
-                data = data['data']['product']
-
             name = data['identifiers']['productLabel']
             brand = data['identifiers']['brandName']
             url = f"https://homedepot.com/{data['identifiers']['canonicalUrl']}"
@@ -81,17 +76,13 @@ class HomeDepot():
             store_location = f"{store['address']}, {store['city']}, {store['state']} {store['zipcode']}"
 
 
-            inventory = data['fulfillment']['fulfillmentOptions']
+            inventory = data.get('fulfillment', {}).get('fulfillmentOptions', None)
             total = 0
 
 
-            if inventory is not None:
-                a_q = [loc['locations'] for i in inventory for loc in i['services']  if loc['type'] == 'bopis']
-
-                if len(a_q) < 1:
-                    a_q = [loc['locations'] for i in inventory for loc in i['services']  if loc['type'] == 'express delivery']
-                
-                total = sum([loc['inventory']['quantity'] for i in a_q for loc in i if loc['locationId'] == store['store_id']])
+            if inventory is not None and isinstance(inventory, list):
+                a_q = [loc['locations'] for i in inventory if isinstance(i.get('services'), list) for loc in i['services']]
+                total = sum(int(loc.get('inventory', {}).get('quantity', 0)) for sublist in a_q if isinstance(sublist, list) for loc in sublist if isinstance(loc, dict) and loc.get('locationId') == store['store_id'])
 
             image_url = data['media'].get('images',None)
             mainImageurl = str(image_url[0].get('url')).replace('<SIZE>','400') if image_url is not None else image_url
@@ -101,12 +92,12 @@ class HomeDepot():
                 "brand":brand,
                 "url":url,
                 "mainImageurl":mainImageurl,
-                "sku":sku,
+                "sku":storesku,
                 "reviews":reviews,
                 "rating":rating,
                 "model":model,
                 "retailer":retailer,
-                "storesku":sku,
+                "storesku":storesku,
                 "omsid":omsid,
                 "store_name":store_name,
                 "store_id":store_id,
@@ -114,10 +105,10 @@ class HomeDepot():
                 "inventory":total
             }
             
-            # print(f"from store {store['store_id']} | item {sku}")
+            print(f"{sku} at {store['store_name']} - {total} items in stock")
             return True,result
         except Exception as error:
-            return False,error
+            return False,'Could not format data: ' + str(error)
 
     def get_product_details(self,store,delay,timeout,sku='',limit:int=20,offset:int=0,cat_id='*',cat_url='',verify=True,multiple=False,retries=Utils.get_retries_count()):
         success,result = False,{}
@@ -167,7 +158,11 @@ class HomeDepot():
                     verify=verify
                 )
 
-                if response.ok:success,result = True,response.json()
+                if response.ok:
+                    if response.json().get('errors'):
+                        raise Exception(response.json().get('errors',[{}])[0].get('message','Unknown error'))
+                    
+                    success,result = True,response.json()
             
                 elif response.status_code in [503,412,456,522,408,403] and retries > 0:
                     print(sku + ' at ' + store['store_name'] + ' failed to get details, retrying...')
@@ -231,6 +226,7 @@ class HomeDepot():
                 if response.ok:
                     if response.json().get('errors'):
                         raise Exception(response.json().get('errors',[{}])[0].get('message','Unknown error'))
+                    
                     success,result = True,response.json()
             
                 elif response.status_code in [503,412,456,522,408,403]:
@@ -285,104 +281,100 @@ class HomeDepot():
                         store[key] = value
                 stores.append(store)
         return stores
+    
 
-    def scan_items(self, store, cat, limit, offset, delay, timeout):
+    def load_products(self,products_file):
+        # Load store details from store_list.csv
+        products = []
+        products_file_path = os.path.join(self.root_dir,products_file)
+        with open(products_file_path, 'r', encoding='utf-8') as csvf:
+            reader = csv.DictReader(csvf)
+            for row in reader:
+                product = {
+                    'name': row['name'],
+                    'brand': row['brand'],
+                    'url': row['url'],
+                    'mainImageurl': row['mainImageurl'],
+                    'SKU': row['SKU'],
+                    'Reviews': row['Reviews'],
+                    'Rating': row['Rating'],
+                    'Model': row['Model'],
+                    'retailer': row['retailer'],
+                    'storesku': row['storesku'],
+                    'omsid': row['omsid'],
+                    'storeName': row['storeName'],
+                    'storeID': row['storeID'],
+                    'storeLocation': row['storeLocation'],
+                    'inventory': row['inventory'],
+                }
+                if product.get('SKU') is not None and product.get('omsid') is not None:products.append(product)
+        return products
+               
+    def scan_items(self, store,product, delay, timeout):
         try:
-            success, items = self.get_product_details(
-                store, delay, timeout, limit=limit, offset=offset, cat_id=cat['categoryId'], cat_url=cat['link'], multiple=True
+            success, item = self.get_product_details(
+                store, delay, timeout, product['omsid']
             )
             
             if not success:
-                raise Exception(str(items))
-                
-            results = items['data']['searchModel']['products']
+                raise Exception(str(item))
+
+            product_data = item.get('data', {}).get('product')
+            if not product_data:
+                print(item)
+                raise Exception(f"No product data in response for SKU {product['SKU']}, omsid {product['omsid']}")
             
-            # This will hold all processed rows to be returned
-            all_item_rows = [] 
-
-            with concurrent.futures.ThreadPoolExecutor(max_workers=limit) as executor:
-                print(f'\nGetting prices from {len(results)} items on {store["store_name"]}...\n')
-                
-                # Map futures back to their original item data if needed later
-                future_to_item_id = {}
-                for result_item in results:
-                    args = (store, result_item['itemId'], delay, timeout)
-                    kwargs = {'data': result_item, 'multiple': True}
-                    
-                    future = executor.submit(self.format_data, *args, **kwargs)
-                    future_to_item_id[future] = result_item['itemId']
-
-                # Iterate over completed futures to collect results efficiently
-                for future in concurrent.futures.as_completed(future_to_item_id):
-                    item_id = future_to_item_id[future]
-                    try:
-                        success, item_result = future.result()
-                        
-                        if success:
-                            # Assuming check_prices returns a list/tuple of values structured for CSV
-                            # e.g., result = (name, brand, url, ...)
-                            all_item_rows.append(item_result.values())
-                            store_id = store['store_id'] # Use the store from the outer scope
-                            print(f'{item_id} added to csv on store {store_id}')
-                        else: 
-                            print(f"Error for item {item_id}: {item_result.get('message', 'Unknown error')}")
-                    
-                    except Exception as e:
-                        print(f"Exception processing item {item_id}: {e}")
-
-            # Return the collected data (list of lists/tuples)
-            return True, {"store": store['store_id'], "data": all_item_rows}
-            
+            success, result = self.format_data(
+                store,
+                product['SKU'],
+                product_data)
+            if success:
+                return True, {"store": store['store_id'], "data": result}
+            else:
+                return False, {"store": store['store_id'], "message": result}
         except Exception as error:
-            return False, {"store": store['store_id'], "message": str(error)}
+            return False, {"store": store['store_id'], "message": f'Error scanning item: {error}'}
         
 
-    def scan_wholestore(self,store, csv_file, total_items=1800, limit=50, offset=0, delay=3, timeout=60):
+    def scan_wholestore(self,product, csv_file, delay=3, timeout=60):
         try:
+            all_data_rows = []
             scanned = 0
+            stores = self.load_stores()[:100]  # Limit to first 100 stores for testing
 
-            success,cats = self.load_categories()
-            if not success:return False,cats
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+                print(f'Scanning wholestore for: {product["SKU"]}\n')
 
-            print(f'Scanning the entire {self.name} for price drops\n')
+                store_futures = {}
+                for store in stores:
+                    future = executor.submit(
+                        self.scan_items,
+                        store,
+                        product,
+                        delay,
+                        timeout
+                    )
+                    store_futures[future] = store['store_id']
 
-            
-            
-            store_id = store['store_id']
-            print(f'Starting scan for store: {store["store_name"]} (ID: {store["store_id"]})\n')
-            
-            # Calculation for 'base' needs review based on your scraping logic
-            # For now, keeping your original calculation logic:
-            # base = total_items // limit
-            # if total_items % limit == 0:base += 1
+                for future in concurrent.futures.as_completed(store_futures):
+                    store_id = store_futures[future]
+                    try:
+                        success, result = future.result()
+                        if success:
+                            data:dict = result['data']
+                            all_data_rows.append(data.values())
+                            scanned += 1
+                        else:
+                            print(f'Failed scanning for store {store_id}: {result["message"]}')
+                    except Exception as e:
+                        print(f'Exception scanning store {store_id}: {e}')
+           
+            with open(csv_file, 'a', encoding='utf-8', newline='') as f:
+                writer = csv.writer(f)
+                for row in all_data_rows:
+                    writer.writerow(row)
 
-            while scanned < total_items:
-                if scanned >= total_items:
-                    print(f'Reached total item limit of {total_items}, for store {store_id}.')
-                    break
-
-                success, result_data = self.scan_items( store, random.choice(cats), limit, offset, delay, timeout)
-
-                if success:
-                    data = result_data['data']
-                    print(f'Successfully scanned store {store_id}, total items: {len(data)}, scanned so far: {scanned + len(data)} at offset {offset}')
-                    
-
-                    with open(csv_file, 'a', encoding='utf-8', newline='') as f:
-                        writer = csv.writer(f)
-                        writer.writerows(data)
-                    
-                    scanned += len(data)
-
-                else:
-                    message = result_data['message']
-                    print(f'Failed to scan store {store_id}: {message}')
-
-                # Update offset for the next iteration of the outer loop
-                if offset * limit >= 720:offset = 0
-                else:offset += 1
-
-            return True, f'Completed scanning store {store_id}, total items scanned: {scanned}'
+            return True, f'Scanned {scanned} stores for product {product["SKU"]}'
         except Exception as error:
             print(f'Error scanning whole store: {error}')
             return False, str(error)
@@ -397,7 +389,7 @@ if __name__ == '__main__':
 
     homedepot = HomeDepot()
 
-    stores = homedepot.load_stores()
+    products = homedepot.load_products('Reduced product List 2025 10 30.csv')
     headers = ['name', 'brand', 'url', 'mainImageurl', 'SKU', 'Reviews', 'Rating', 'Model', 'retailer', 'storesku', 'omsid','storeName','storeID','storeLocation','inventory']
     csv_file = f'product-{datetime.now().strftime("%Y-%m-%d")}.csv'
     results_folder = os.path.join(homedepot.root_dir, 'results')
@@ -405,22 +397,30 @@ if __name__ == '__main__':
     if not os.path.exists(results_folder):
         os.makedirs(results_folder)
 
-    if not os.path.isfile(f'{results_folder}/{csv_file}'):
-        with open(f'{results_folder}/{csv_file}', 'w', encoding='utf-8', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
+    with open(f'{results_folder}/{csv_file}', 'w', encoding='utf-8', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(headers)
 
 
-    for store in stores:
-        success, result = homedepot.scan_wholestore(
-            store,
-            f'{results_folder}/{csv_file}',
-            total_items=1800,
-            limit=50,
-            offset=0,
-            delay=2,
-            timeout=60
-        )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_product = {
+            executor.submit(
+                homedepot.scan_wholestore,
+                product,
+                f'{results_folder}/{csv_file}',
+                delay=3,
+                timeout=60
+            ): product for product in products
+        }
 
-        Utils.deduplicate_csv(f'{results_folder}/{csv_file}')
-        print(result)   
+        for future in concurrent.futures.as_completed(future_to_product):
+            product = future_to_product[future]
+            try:
+                success, result = future.result()
+                if success:
+                    print(result)
+                else:
+                    print(f'Failed scanning for product {product["SKU"]}: {result}')
+            except Exception as e:
+                print(f'Exception scanning product {product["SKU"]}: {e}')
+    # Utils.deduplicate_csv(f'{results_folder}/{csv_file}')
