@@ -60,32 +60,43 @@ class HomeDepot():
         
     def format_data(self,store,sku,data):
         try:
-            name = data['identifiers']['productLabel']
-            brand = data['identifiers']['brandName']
-            url = f"https://homedepot.com/{data['identifiers']['canonicalUrl']}"
+            identifiers = Utils.safe_get(data, 'identifiers', default={})
+            name = identifiers.get('productLabel', '')
+            brand = identifiers.get('brandName', '')
+            canonicalUrl = identifiers.get('canonicalUrl', '')
+            url = f"https://www.homedepot.com/{canonicalUrl}" if canonicalUrl else ''
 
-            reviews = data['reviews']['ratingsReviews']['totalReviews']
-            rating = data['reviews']['ratingsReviews']['averageRating']
-            
-            model = data['identifiers'].get('modelNumber',None)
+            reviews_ratings = Utils.safe_get(data, 'reviews', 'ratingsReviews', default={})
+            reviews = reviews_ratings.get('totalReviews', 0)
+            rating = reviews_ratings.get('averageRating', 0)
+
+            model = identifiers.get('modelNumber', None)
             retailer = "HomeDepot"
-            storesku = data['identifiers'].get('storeSkuNumber',None)
-            omsid = data['identifiers'].get('parentId',None)
-            store_name = store['store_name']
-            store_id = store['store_id']
-            store_location = f"{store['address']}, {store['city']}, {store['state']} {store['zipcode']}"
+            storesku = identifiers.get('storeSkuNumber', None)
+            omsid = identifiers.get('parentId', None)
+            store_name = Utils.safe_get(store, 'store_name', default='')
+            store_id = Utils.safe_get(store, 'store_id', default='')
+            store_location = f"{Utils.safe_get(store, 'address', default='')}, {Utils.safe_get(store, 'city', default='')}, {Utils.safe_get(store, 'state', default='')} {Utils.safe_get(store, 'zipcode', default='')}"
 
-
-            inventory = data.get('fulfillment', {}).get('fulfillmentOptions', None)
+            inventory = Utils.safe_get(data, 'fulfillment', 'fulfillmentOptions', default=None)
             total = 0
 
+            if inventory is not None and isinstance(inventory, list) and len(inventory) > 0:
+                a_q = []
+                for option in inventory:
+                    services = Utils.safe_get(option, 'services', default=[])
+                    for service in services:
+                        loc = Utils.safe_get(service, 'locations', default=[])
+                        a_q.extend(loc)
+                total = sum(
+                    int(Utils.safe_get(loc, 'inventory', 'quantity', default=0))
+                    for loc in a_q
+                    if Utils.safe_get(loc, 'locationId', default='') == store_id
+                )
 
-            if inventory is not None and isinstance(inventory, list):
-                a_q = [loc['locations'] for i in inventory if isinstance(i.get('services'), list) for loc in i['services']]
-                total = sum(int(loc.get('inventory', {}).get('quantity', 0)) for sublist in a_q if isinstance(sublist, list) for loc in sublist if isinstance(loc, dict) and loc.get('locationId') == store['store_id'])
-
-            image_url = data['media'].get('images',None)
-            mainImageurl = str(image_url[0].get('url')).replace('<SIZE>','400') if image_url is not None else image_url
+            media = Utils.safe_get(data, 'media', default={})
+            image_url = media.get('images', None)
+            mainImageurl = str(image_url[0].get('url')).replace('<SIZE>', '400') if image_url and len(image_url) > 0 and isinstance(image_url[0], dict) and 'url' in image_url[0] else None
             
             result = {
                 "name":name,
@@ -105,7 +116,7 @@ class HomeDepot():
                 "inventory":total
             }
             
-            print(f"{sku} at {store['store_name']} - {total} items in stock")
+            print(f"{sku} at {store_name} - {total} items in stock")
             return True,result
         except Exception as error:
             return False,'Could not format data: ' + str(error)
