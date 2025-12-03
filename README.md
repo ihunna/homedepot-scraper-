@@ -24,6 +24,13 @@ A Python-based web scraper that checks product availability and inventory levels
    pip install -r requirements.txt
    ```
 
+## Requirements for Peak Performance
+
+- 🔥 High-Quality Proxies: 100+ residential proxies for rate limiting avoidance
+- 💪 Server Infrastructure: EC2 or similar with 16+ CPU cores, 32GB+ RAM
+- 🌐 Fast Network: Low-latency connection to minimize round-trip times
+- 📊 Monitoring: Watch CPU/memory usage and request rates
+
 ## Configuration
 
 ### Store List
@@ -66,7 +73,23 @@ If no proxies are provided, the scraper will use direct connections.
 
 ## Usage
 
-### Basic Usage
+### Optimized High-Performance Version (Recommended)
+For large-scale scraping with 3.5M+ combinations, use the optimized version:
+```bash
+python main_optimized.py
+```
+
+This version features:
+- **Async HTTP requests** with aiohttp for better concurrency
+- **Concurrent product×store processing** (instead of sequential)
+- **200 concurrent connections** with controlled rate limiting
+- **Batch processing** for memory management
+- **Minimal delays** (0.1s vs 3s) while respecting API limits
+
+**Expected Performance**: 100K-500K requests/hour depending on network and proxies
+
+### Original Version
+For smaller-scale scraping or testing:
 ```bash
 python main.py
 ```

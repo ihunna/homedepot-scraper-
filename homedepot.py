@@ -1,4 +1,4 @@
-import requests,json,os,uuid,time,random,string,csv, http.client
+import requests,json,os,uuid,time,random,string,csv, http.client, asyncio, aiohttp
 from utils import Utils
 
 from requests.exceptions import ProxyError, ConnectionError, Timeout
@@ -12,6 +12,10 @@ import concurrent.futures
 """
 Creating a class for Homedepot
 """
+
+class NotFound(Exception):
+    def __init__(self, message="Product not found"):
+        super().__init__(message)
 
 class HomeDepot():
     def __init__(self,proxies = None):
@@ -115,7 +119,6 @@ class HomeDepot():
                 "store_location":store_location,
                 "inventory":total
             }
-            
             print(f"{sku} at {store_name} - {total} items in stock")
             return True,result
         except Exception as error:
@@ -267,7 +270,111 @@ class HomeDepot():
             success,result = False,f"error getting product: {error}"
         
         return success,result
-    
+
+    async def get_product_details_async(self, session, store, delay=0.1, timeout=30, sku='', retries=Utils.get_retries_count()):
+        success, result = False, {}
+        try:
+            await asyncio.sleep(delay)
+            proxies = random.choice(self.proxies) if self.proxies is not None and len(self.proxies) > 0 else None
+
+            device_id = str(uuid.uuid4()).upper()
+            headers = self.headers.copy()
+            headers.update({
+                'x-parent-trace-id': f'{self.generate_sensor_data(type="trace_id")}/1352142427325640755',
+                'x-cloud-trace-context': f'{self.generate_sensor_data(type="trace_id")}/24;o=1',
+                'user-agent': f'THDConsumer/7.55.3.1 (iPhone;iOS 18.6.2) DID:{device_id}',
+                'x-nativeapp': f'{self.generate_sensor_data(type="x-nativeapp")}',
+                'deviceid': device_id,
+            })
+
+            # Only handle single product requests for now (not multiple/categorical)
+            params = {'opname': 'clientOnlyProduct'}
+            json_data = {
+                'operationName': 'clientOnlyProduct',
+                'variables': {
+                    'skipPaintDetails': True,
+                    'skipSpecificationGroup': False,
+                    'skipFavoriteCount': False,
+                    'skipInstallServices': True,
+                    'skipKPF': False,
+                    'skipSubscribeAndSave': False,
+                    'itemId': f'{sku}',
+                    'storeId': f'{store["store_id"]}',
+                    'zipCode': f'{store["zipcode"]}',
+                },
+                'query': 'query clientOnlyProduct($itemId: String!, $loyaltyMembershipInput: LoyaltyMembershipInput, $dataSource: String, $storeId: String, $configId: String, $skipPaintDetails: Boolean = true, $skipSpecificationGroup: Boolean = false, $zipCode: String, $quantity: Int, $skipFavoriteCount: Boolean = false, $skipInstallServices: Boolean = true, $skipKPF: Boolean = false, $skipSubscribeAndSave: Boolean = false) {\n  product(\n    itemId: $itemId\n    loyaltyMembershipInput: $loyaltyMembershipInput\n    dataSource: $dataSource\n  ) {\n    dataSources\n    info {\n      bathRenovation\n      replacementOMSID\n      label\n      hasVisuallySimilar\n      hidePrice\n      ecoRebate\n      quantityLimit\n      categoryHierarchy\n      sskMin\n      sskMax\n      unitOfMeasureCoverage\n      wasMaxPriceRange\n      wasMinPriceRange\n      productSubType {\n        name\n        link\n        __typename\n      }\n      prop65Warning\n      prop65Message\n      returnable\n      hasSubscription\n      isBuryProduct\n      isSponsored\n      isGenericProduct\n      isLiveGoodsProduct\n      sponsoredBeacon {\n        onClickBeacon\n        onViewBeacon\n        onClickBeacons\n        onViewBeacons\n        __typename\n      }\n      sponsoredMetadata {\n        campaignId\n        placementId\n        slotId\n        sponsoredId\n        trackSource\n        __typename\n      }\n      globalCustomConfigurator {\n        customExperience\n        __typename\n      }\n      samplesAvailable\n      customerSignal {\n        previouslyPurchased\n        __typename\n      }\n      productDepartmentId\n      productDepartment\n      augmentedReality\n      swatches {\n        isSelected\n        itemId\n        label\n        swatchImgUrl\n        url\n        value\n        __typename\n      }\n      totalNumberOfOptions\n      paintBrand\n      dotComColorEligible\n      fiscalYear\n      classNumber\n      recommendationFlags {\n        visualNavigation\n        packages\n        pipCollections\n        ACC\n        collections\n        frequentlyBoughtTogether\n        bundles\n        __typename\n      }\n      pipCalculator {\n        coverageUnits\n        display\n        publisher\n        toggle\n        defaultAdditionalCoverage\n        additionalCoveragePercentage\n        __typename\n      }\n      __typename\n    }\n    itemId\n    taxonomy {\n      breadCrumbs {\n        browseUrl\n        creativeIconUrl\n        deselectUrl\n        dimensionName\n        label\n        refinementKey\n        url\n        __typename\n      }\n      brandLinkUrl\n      __typename\n    }\n    availabilityType {\n      discontinued\n      type\n      status\n      buyable\n      __typename\n    }\n    identifiers {\n      canonicalUrl\n      itemId\n      brandName\n      productLabel\n      productType\n      skuClassification\n      modelNumber\n      storeSkuNumber\n      specialOrderSku\n      toolRentalSkuNumber\n      rentalCategory\n      rentalSubCategory\n      upc\n      upcGtin13\n      brandMainPageUrl\n      parentId\n      isSuperSku\n      roomVOEnabled\n      __typename\n    }\n    media {\n      images {\n        url\n        type\n        subType\n        sizes\n        hotspots {\n          coordinate {\n            xCoordinate\n            yCoordinate\n            __typename\n          }\n          omsIDs\n          __typename\n        }\n        altText\n        __typename\n      }\n      video {\n        url\n        videoStill\n        link {\n          text\n          url\n          __typename\n        }\n        title\n        type\n        videoId\n        thumbnail\n        longDescription\n        shortDescription\n        uploadDate\n        dateModified\n        __typename\n      }\n      threeSixty {\n        id\n        url\n        __typename\n      }\n      augmentedRealityLink {\n        usdz\n        image\n        __typename\n      }\n      richContent {\n        content\n        displayMode\n        salsifyRichContent\n        __typename\n      }\n      __typename\n    }\n    badges(storeId: $storeId) {\n      label\n      name\n      color\n      creativeImageUrl\n      endDate\n      message\n      timerDuration\n      timer {\n        timeBombThreshold\n        daysLeftThreshold\n        dateDisplayThreshold\n        message\n        __typename\n      }\n      __typename\n    }\n    pricing(storeId: $storeId) {\n      message\n      original\n      mapAboveOriginalPrice\n      promotion {\n        dollarOff\n        type\n        description {\n          shortDesc\n          longDesc\n          __typename\n        }\n        percentageOff\n        promotionTag\n        savingsCenter\n        savingsCenterPromos\n        specialBuySavings\n        specialBuyDollarOff\n        specialBuyPercentageOff\n        dates {\n          end\n          start\n          __typename\n        }\n        experienceTag\n        subExperienceTag\n        __typename\n      }\n      value\n      alternatePriceDisplay\n      alternate {\n        bulk {\n          pricePerUnit\n          thresholdQuantity\n          value\n          __typename\n        }\n        unit {\n          caseUnitOfMeasure\n          unitsOriginalPrice\n          unitsPerCase\n          value\n          __typename\n        }\n        __typename\n      }\n      preferredPriceFlag\n      specialBuy\n      unitOfMeasure\n      clearance {\n        value\n        dollarOff\n        percentageOff\n        __typename\n      }\n      conditionalPromotions {\n        dates {\n          start\n          end\n          __typename\n        }\n        description {\n          shortDesc\n          longDesc\n          __typename\n        }\n        experienceTag\n        subExperienceTag\n        eligibilityCriteria {\n          itemGroup\n          minPurchaseAmount\n          minPurchaseQuantity\n          relatedSkusCount\n          omsSkus\n          __typename\n        }\n        reward {\n          tiers {\n            minPurchaseAmount\n            minPurchaseQuantity\n            rewardPercent\n            rewardAmountPerOrder\n            rewardAmountPerItem\n            rewardFixedPrice\n            maxAllowedRewardAmount\n            maxPurchaseQuantity\n            __typename\n          }\n          __typename\n        }\n        nvalues\n        brandRefinementId\n        __typename\n      }\n      __typename\n    }\n    reviews {\n      ratingsReviews {\n        totalReviews\n        averageRating\n        __typename\n      }\n      __typename\n    }\n    paintDetails(configId: $configId, storeId: $storeId) @skip(if: $skipPaintDetails) {\n      brandLogo\n      colorType\n      rgb {\n        red\n        green\n        blue\n        __typename\n      }\n      colorDisplayName\n      __typename\n    }\n    details {\n      collection {\n        url\n        collectionId\n        name\n        __typename\n      }\n      description\n      descriptiveAttributes {\n        name\n        value\n        bulleted\n        sequence\n        __typename\n      }\n      highlights\n      additionalResources {\n        infoAndGuides {\n          name\n          url\n          __typename\n        }\n        installationAndRentals {\n          contentType\n          name\n          url\n          __typename\n        }\n        diyProjects {\n          contentType\n          name\n          url\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    seo {\n      seoKeywords\n      seoDescription\n      __typename\n    }\n    specificationGroup @skip(if: $skipSpecificationGroup) {\n      specifications {\n        specName\n        specValue\n        __typename\n      }\n      specTitle\n      __typename\n    }\n    fulfillment(storeId: $storeId, zipCode: $zipCode, quantity: $quantity) {\n      fulfillmentOptions {\n        fulfillable\n        type\n        services {\n          type\n          locations {\n            isAnchor\n            locationId\n            inventory {\n              isOutOfStock\n              quantity\n              isInStock\n              isLimitedQuantity\n              isUnavailable\n              maxAllowedBopisQty\n              minAllowedBopisQty\n              __typename\n            }\n            curbsidePickupFlag\n            isBuyInStoreCheckNearBy\n            distance\n            storeName\n            state\n            type\n            storePhone\n            __typename\n          }\n          hasFreeShipping\n          freeDeliveryThreshold\n          deliveryTimeline\n          deliveryDates {\n            startDate\n            endDate\n            __typename\n          }\n          deliveryCharge\n          dynamicEta {\n            hours\n            minutes\n            __typename\n          }\n          optimalFulfillment\n          totalCharge\n          __typename\n        }\n        __typename\n      }\n      backordered\n      backorderedShipDate\n      bossExcludedShipStates\n      excludedShipStates\n      seasonStatusEligible\n      anchorStoreStatus\n      anchorStoreStatusType\n      sthExcludedShipState\n      bossExcludedShipState\n      onlineStoreStatus\n      onlineStoreStatusType\n      __typename\n    }\n    favoriteDetail @skip(if: $skipFavoriteCount) {\n      count\n      __typename\n    }\n    installServices(storeId: $storeId, zipCode: $zipCode) @skip(if: $skipInstallServices) {\n      scheduleAMeasure\n      gccCarpetDesignAndOrderEligible\n      __typename\n    }\n    keyProductFeatures @skip(if: $skipKPF) {\n      keyProductFeaturesItems {\n        features {\n          name\n          refinementId\n          refinementUrl\n          value\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    subscription @skip(if: $skipSubscribeAndSave) {\n      defaultfrequency\n      discountPercentage\n      subscriptionEnabled\n      __typename\n    }\n    sizeAndFitDetail {\n      attributeGroups {\n        attributes {\n          attributeName\n          dimensions\n          __typename\n        }\n        dimensionLabel\n        productType\n        __typename\n      }\n      __typename\n    }\n    dataSource\n    seoDescription\n    __typename\n  }\n}',
+            }
+
+            # Create proxy format for aiohttp
+            proxy_url = None
+            if proxies:
+                if isinstance(proxies, str) and proxies.startswith('http'):
+                    proxy_url = proxies
+                elif isinstance(proxies, dict):
+                    proxy_url = proxies.get('http') or proxies.get('https')
+
+            try:
+                async with session.post(
+                    'https://nativeapp.homedepot.com/federation-gateway/graphql',
+                    params=params,
+                    json=json_data,
+                    headers=headers,
+                    proxy=proxy_url,
+                    timeout=timeout
+                ) as response:
+                    if response.status == 200:
+                        resp_json = await response.json()
+                        if resp_json.get('errors'):
+                            error_msg = resp_json.get('errors', [{}])[0].get('message', 'Unknown error')
+                            # Check if this is a product-not-available error (don't retry)
+                            if any(keyword in error_msg.lower() for keyword in [
+                                'product not found', 'discontinued', 'no longer available',
+                                'invalid product', 'not found', 'does not exist'
+                            ]):
+                                raise NotFound(f'Product {sku} not available: {error_msg}')
+                            else:
+                                # Retryable API error
+                                if retries > 0:
+                                    print(f'API error for {sku} at {store["store_name"]}, retrying: {error_msg}')
+                                    success, result = await self.get_product_details_async(
+                                        session, store, delay, timeout, sku, retries - 1
+                                    )
+                                    return success, result
+                                else:
+                                    raise Exception(error_msg)
+                        # Validate product data exists
+                        product_data = resp_json.get('data', {}).get('product', {})
+                        identifiers = product_data.get('identifiers', {})
+                        if not identifiers:
+                            raise NotFound(f'Product {sku} not available - no product identifiers in response')
+                        success, result = True, resp_json
+                    elif response.status in [429, 503, 504, 408] and retries > 0:  # Rate limit or server errors - retry
+                        print(f'Rate limit/server error {response.status} for {sku} at {store["store_name"]}, retrying...')
+                        success, result = await self.get_product_details_async(
+                            session, store, delay, timeout, sku, retries - 1
+                        )
+                    else:
+                        # Client errors (4xx except 429) or other status codes - assume permanent issue
+                        error_text = await response.text()
+                        raise Exception(f'Response status {response.status}: {error_text}')
+            except (aiohttp.ClientError) as e:
+                # Network/proxy/connection errors - should retry
+                if retries > 0:
+                    print(f'Network/proxy error for {sku} at {store["store_name"]}, retrying: {str(e)}')
+                    success, result = await self.get_product_details_async(
+                        session, store, delay, timeout, sku, retries - 1
+                    )
+                else:
+                    raise Exception(f'Network error (retries exhausted): {str(e)}')
+                
+        except NotFound as nf:
+            success, result = False, 'Not Available'
+
+        except Exception as error:
+            success, result = False, f"error getting product: {error}"
+
+        return success, result
+
     def load_stores(self):
         # Load store details from store_list.csv
         stores = []
@@ -321,20 +428,20 @@ class HomeDepot():
                 if product.get('SKU') is not None and product.get('omsid') is not None:products.append(product)
         return products
                
-    def scan_items(self, store,product, delay, timeout):
+    async def scan_items_async(self, session, store, product, delay=0.1, timeout=30):
         try:
-            success, item = self.get_product_details(
-                store, delay, timeout, product['omsid']
+            success, item = await self.get_product_details_async(
+                session, store, delay, timeout, product['omsid']
             )
-            
-            if not success:
-                raise Exception(str(item))
 
+            if not success:
+                return False, item
+            
             product_data = item.get('data', {}).get('product')
             if not product_data:
-                print(item)
+                print(f"Warning: No product data for {product['SKU']} at {store['store_name']}")
                 raise Exception(f"No product data in response for SKU {product['SKU']}, omsid {product['omsid']}")
-            
+
             success, result = self.format_data(
                 store,
                 product['SKU'],
@@ -345,7 +452,33 @@ class HomeDepot():
                 return False, {"store": store['store_id'], "message": result}
         except Exception as error:
             return False, {"store": store['store_id'], "message": f'Error scanning item: {error}'}
-        
+
+
+    def scan_items(self, store,product, delay, timeout):
+        try:
+            success, item = self.get_product_details(
+                store, delay, timeout, product['omsid']
+            )
+
+            if not success:
+                raise Exception(str(item))
+
+            product_data = item.get('data', {}).get('product')
+            if not product_data:
+                print(item)
+                raise Exception(f"No product data in response for SKU {product['SKU']}, omsid {product['omsid']}")
+
+            success, result = self.format_data(
+                store,
+                product['SKU'],
+                product_data)
+            if success:
+                return True, {"store": store['store_id'], "data": result}
+            else:
+                return False, {"store": store['store_id'], "message": result}
+        except Exception as error:
+            return False, {"store": store['store_id'], "message": f'Error scanning item: {error}'}
+
 
     def scan_wholestore(self,product, csv_file, delay=3, timeout=60):
         try:
